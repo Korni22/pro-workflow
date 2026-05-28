@@ -12,19 +12,29 @@ function readStdin() {
   });
 }
 
+// A flag value that wraps a command substitution ($(...) or `...`) is not the
+// literal commit message — the real text lives inside the subshell, typically a
+// heredoc (e.g. git commit -m "$(cat <<'EOF' ... EOF)"). Detect it so we fall
+// through to heredoc parsing instead of validating the literal "$(cat <<'EOF'".
+const CMD_SUBST = /\$\(|`/;
+
 function extractMessage(command) {
   if (!command) return { msg: null, form: 'empty' };
 
   const shortFlag = command.match(/(?:^|\s)-m\s+(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|(\S+))/);
   if (shortFlag) {
     const raw = shortFlag[1] || shortFlag[2] || shortFlag[3] || '';
-    return { msg: raw.replace(/\\"/g, '"').replace(/\\'/g, "'"), form: '-m' };
+    if (!CMD_SUBST.test(raw)) {
+      return { msg: raw.replace(/\\"/g, '"').replace(/\\'/g, "'"), form: '-m' };
+    }
   }
 
   const longFlag = command.match(/--message(?:=|\s+)(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|(\S+))/);
   if (longFlag) {
     const raw = longFlag[1] || longFlag[2] || longFlag[3] || '';
-    return { msg: raw.replace(/\\"/g, '"').replace(/\\'/g, "'"), form: '--message' };
+    if (!CMD_SUBST.test(raw)) {
+      return { msg: raw.replace(/\\"/g, '"').replace(/\\'/g, "'"), form: '--message' };
+    }
   }
 
   const heredocAny = command.match(/<<-?\s*'?([A-Za-z_][A-Za-z0-9_]*)'?\s*\n([\s\S]*?)\n\s*\1\s*$/m);
